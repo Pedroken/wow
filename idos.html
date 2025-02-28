@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>IDOS Web App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      background-color: #f5f5f5;
+      font-size: 20px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 32px;
+      margin-bottom: 24px;
+    }
+    .input-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 20px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 20px;
+      box-sizing: border-box;
+      text-transform: uppercase;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    input[readonly] {
+      background-color: #e0ffe0;
+    }
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    button {
+      padding: 14px;
+      font-size: 20px;
+      flex: 1 1 auto;
+      border: none;
+      border-radius: 4px;
+      background-color: #1976d2;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #1565c0;
+    }
+    #limpar {
+      background-color: #d32f2f;
+    }
+    #limpar:hover {
+      background-color: #c62828;
+    }
+    /* Campo de sugestão com fundo verde */
+    #suggestion {
+      background-color: #a5d6a7;
+    }
+  </style>
+</head>
+<body>
+  <h1>IDOS Web App</h1>
+  
+  <div class="input-group">
+    <label for="nome">Nome:</label>
+    <input type="text" id="nome" placeholder="Digite o nome">
+  </div>
+  
+  <div class="input-group">
+    <label for="suggestion">Nome Sugerido:</label>
+    <input type="text" id="suggestion" readonly>
+  </div>
+  
+  <div class="input-group">
+    <label for="abreviacao">Abreviação:</label>
+    <input type="text" id="abreviacao" placeholder="Abreviação" readonly>
+  </div>
+  
+  <div class="input-group">
+    <label for="numeroOS">Número OS:</label>
+    <input type="text" id="numeroOS" placeholder="Número OS">
+  </div>
+  
+  <div class="input-group">
+    <label for="resultadoID">Resultado ID:</label>
+    <input type="text" id="resultadoID" readonly>
+  </div>
+  
+  <div class="button-group">
+    <button id="gerarID">Gerar ID</button>
+    <button id="copiar">Copiar</button>
+    <button id="limpar">Limpar</button>
+  </div>
+  
+  <script>
+    // Variáveis globais
+    let uniqueName = "";
+    let suggestionToggle = false; // false: adiciona ponto no início; true: adiciona ponto no final
+
+    // Função para simular a criptografia (usamos btoa como placeholder)
+    const CryptUtil = {
+      encrypt: function(key, text) {
+        // Em cenário real, utilize uma função de criptografia adequada
+        return btoa(text);
+      }
+    };
+
+    // Função para gerar abreviação (primeira letra do primeiro e do último nome)
+    function generateAbbreviation(name) {
+      name = name.toUpperCase();
+      let parts = name.trim().split(/\s+/);
+      let abbr = "";
+      if (parts.length >= 2) {
+        let first = parts[0].replace(/[^A-Z]/g, "");
+        let last = parts[parts.length - 1].replace(/[^A-Z]/g, "");
+        if (first && last) {
+          abbr = first.charAt(0) + last.charAt(0);
+        }
+      } else if (parts.length === 1) {
+        let token = parts[0].replace(/[^A-Z]/g, "");
+        abbr = token.substring(0, 2);
+      }
+      return abbr;
+    }
+
+    // Função para buscar nomes existentes via API e retornar um conjunto (Set) dos nomes
+    function fetchExistingNames() {
+      return fetch("https://api.thingspeak.com/channels/300179/feed.json?results=800")
+        .then(response => response.json())
+        .then(data => {
+          const names = new Set();
+          if (data && data.feeds) {
+            data.feeds.forEach(feed => {
+              if (feed.field1) {
+                names.add(feed.field1.trim().toUpperCase());
+              }
+            });
+          }
+          return names;
+        })
+        .catch(error => {
+          console.error("Erro ao buscar nomes existentes:", error);
+          return new Set();
+        });
+    }
+
+    // Função para gerar uma sugestão única baseada no nome digitado
+    function generateUniqueName(baseName, existingNames) {
+      baseName = baseName.toUpperCase();
+      let candidate = "";
+      if (!suggestionToggle) {
+        candidate = "." + baseName;
+      } else {
+        candidate = baseName + ".";
+      }
+      // Enquanto o candidato existir, acrescenta mais pontos na mesma posição
+      if (!suggestionToggle) {
+        while (existingNames.has(candidate)) {
+          candidate = "." + candidate;
+        }
+      } else {
+        while (existingNames.has(candidate)) {
+          candidate = candidate + ".";
+        }
+      }
+      suggestionToggle = !suggestionToggle; // alterna para a próxima sugestão
+      return candidate;
+    }
+
+    // Ao perder o foco do campo "nome", gera a sugestão única e a abreviação
+    document.getElementById("nome").addEventListener("blur", function() {
+      const nome = this.value.trim();
+      if (nome !== "") {
+        // Gera a abreviação e atribui ao campo correspondente
+        const abbr = generateAbbreviation(nome);
+        document.getElementById("abreviacao").value = abbr;
+        
+        // Busca nomes existentes e gera a sugestão única
+        fetchExistingNames().then(existingNames => {
+          uniqueName = generateUniqueName(nome, existingNames);
+          document.getElementById("suggestion").value = uniqueName;
+        });
+      }
+    });
+
+    // Evento para o botão "Gerar ID"
+    document.getElementById("gerarID").addEventListener("click", function() {
+      const numOS = document.getElementById("numeroOS").value.trim();
+      if (!uniqueName) {
+        alert("Insira um nome e deixe o campo perder o foco para gerar a sugestão.");
+        return;
+      }
+      const abbr = document.getElementById("abreviacao").value.trim();
+      const strID = "12031986/" + uniqueName + "-" + abbr + "_" + numOS;
+      const encrypted = CryptUtil.encrypt("1822Pe", strID).trim();
+      document.getElementById("resultadoID").value = encrypted;
+      console.log("ID gerado:", strID);
+    });
+
+    // Evento para o botão "Copiar" (usa a API Clipboard)
+    document.getElementById("copiar").addEventListener("click", function() {
+      const resultado = document.getElementById("resultadoID").value.trim();
+      if (resultado !== "") {
+        navigator.clipboard.writeText(resultado)
+          .then(() => { alert("Copiado para a área de transferência!"); })
+          .catch(err => { alert("Erro ao copiar: " + err); });
+      }
+    });
+
+    // Evento para o botão "Limpar"
+    document.getElementById("limpar").addEventListener("click", function() {
+      document.getElementById("nome").value = "";
+      document.getElementById("suggestion").value = "";
+      document.getElementById("abreviacao").value = "";
+      document.getElementById("numeroOS").value = "";
+      document.getElementById("resultadoID").value = "";
+      uniqueName = "";
+    });
+  </script>
+</body>
+</html>
