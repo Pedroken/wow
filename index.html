@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Hidden Access</title>
+  <style>
+    body {
+      background-color: white;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+    }
+    /* Botão invisível, posicionado no canto inferior direito */
+    #hiddenButton {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      width: 50px;
+      height: 50px;
+      opacity: 0; /* invisível */
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!-- Botão invisível que redireciona para idos.html -->
+  <button id="hiddenButton" onclick="window.location.href='idos.html'"></button>
+</body>
+</html>
