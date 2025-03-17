@@ -1,29 +1,179 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Hidden Access</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Liberação de Ordens de Serviço</title>
   <style>
     body {
-      background-color: white;
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
       margin: 0;
-      padding: 0;
-      height: 100vh;
+      padding: 10px;
     }
-    /* Botão invisível, posicionado no canto inferior direito */
-    #hiddenButton {
-      position: fixed;
-      bottom: 10px;
-      right: 10px;
-      width: 50px;
-      height: 50px;
-      opacity: 0; /* invisível */
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 10px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 1.5em;
+      margin-bottom: 20px;
+    }
+    #cardsContainer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      margin: 10px;
+      width: calc(100% - 40px);
+      max-width: 300px;
+      box-shadow: 2px 2px 6px rgba(0,0,0,0.1);
       cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .card:hover {
+      background-color: #e9e9e9;
+    }
+    .card .title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 1.2em;
+    }
+    /* Ajuste para telas maiores */
+    @media (min-width: 600px) {
+      .card {
+        width: calc(50% - 40px);
+      }
+    }
+    @media (min-width: 900px) {
+      .card {
+        width: calc(33.33% - 40px);
+      }
     }
   </style>
 </head>
 <body>
-  <!-- Botão invisível que redireciona para idos.html -->
-  <button id="hiddenButton" onclick="window.location.href='idos.html'"></button>
+  <div class="container">
+    <h1>Ordens de Serviço Solicitadas</h1>
+    <div id="cardsContainer">
+      <!-- Os cards serão inseridos aqui -->
+    </div>
+  </div>
+
+  <script>
+    // Busca os dados da API Thingspeak
+    async function fetchData() {
+      try {
+        const response = await fetch('https://api.thingspeak.com/channels/300179/feed.json?results=1000');
+        const data = await response.json();
+        processarDados(data.feeds);
+      } catch (error) {
+        console.error('Erro ao buscar os dados:', error);
+      }
+    }
+
+    // Processa os dados para separar registros SOLICITADO e LIBERADO
+    function processarDados(feeds) {
+      const solicitados = [];
+      const liberadosMap = {};
+
+      const regexSolicitado = /^SOLICITADO_([^_]+)_([^_]+)__([\d_]+)/;
+      const regexLiberado   = /^LIBERADO_([^_]+)_([^_]+)__([\d_]+)/;
+
+      feeds.forEach(item => {
+        const field = item.field1;
+        if (!field) return;
+        if (field.startsWith("SOLICITADO_")) {
+          const match = field.match(regexSolicitado);
+          if (match) {
+            const nome = match[1];
+            const os = match[2];
+            const dataSolicitada = match[3];
+            solicitados.push({ nome, os, data: dataSolicitada });
+          }
+        } else if (field.startsWith("LIBERADO_")) {
+          const match = field.match(regexLiberado);
+          if (match) {
+            const nome = match[1];
+            const os = match[2];
+            const key = nome + "_" + os;
+            liberadosMap[key] = true;
+          }
+        }
+      });
+
+      // Filtra registros que não possuem correspondente LIBERADO
+      const pendentes = solicitados.filter(item => {
+        const key = item.nome + "_" + item.os;
+        return !liberadosMap[key];
+      });
+
+      renderizarCards(pendentes);
+    }
+
+    // Cria e renderiza os cards com as informações pendentes
+    function renderizarCards(pendentes) {
+      const container = document.getElementById('cardsContainer');
+      container.innerHTML = '';
+
+      if (pendentes.length === 0) {
+        container.innerHTML = '<p>Nenhuma ordem pendente de liberação.</p>';
+        return;
+      }
+
+      pendentes.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="title">${item.nome}</div>
+          <div>OS: ${item.os}</div>
+          <div>Data: ${item.data}</div>
+        `;
+        card.addEventListener('click', () => {
+          liberarOS(item);
+        });
+        container.appendChild(card);
+      });
+    }
+
+    // Formata a data atual no formato dd_MM_yyyy
+    function formatarDataAtual() {
+      const d = new Date();
+      let dia = d.getDate();
+      let mes = d.getMonth() + 1;
+      const ano = d.getFullYear();
+      dia = dia < 10 ? '0' + dia : dia;
+      mes = mes < 10 ? '0' + mes : mes;
+      return `${dia}_${mes}_${ano}`;
+    }
+
+    // Realiza a liberação via chamada GET para a API Thingspeak
+    async function liberarOS(item) {
+      if (confirm(`Confirmar liberação da OS ${item.os} de ${item.nome}?`)) {
+        const dataAtual = formatarDataAtual();
+        const liberadoString = `LIBERADO_${item.nome}_${item.os}__${dataAtual}`;
+        const url = 'https://api.thingspeak.com/update.json?api_key=7ZES40BC2DXD59TD&field1=' + encodeURIComponent(liberadoString);
+        try {
+          const response = await fetch(url);
+          const result = await response.json();
+          alert('Liberação realizada com sucesso!');
+          fetchData(); // Atualiza os registros após a liberação
+        } catch (error) {
+          console.error('Erro ao liberar a OS:', error);
+          alert('Erro ao liberar a OS.');
+        }
+      }
+    }
+
+    // Inicializa a busca dos dados ao carregar a página
+    fetchData();
+  </script>
 </body>
 </html>
